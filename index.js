@@ -1,32 +1,61 @@
-const express = require('express');
-const mongoose = require('mongoose');
-const cors = require('cors');
-const path = require('path');
-require('dotenv').config();
+const express = require('express')
+const cors = require('cors')
+const app = express()
 
-const authRoutes = require('./routes/auth');
-const postRoutes = require('./routes/posts');
-const userRoutes = require('./routes/users');
-const commentRoutes = require('./routes/comments');
+// CORS для фронтенда
+app.use(
+	cors({
+		origin: 'http://localhost:3000',
+		credentials: true,
+	})
+)
 
-const app = express();
-const PORT = process.env.PORT || 4000;
+app.use(express.json())
 
-app.use(cors());
-app.use(express.json());
+// Временное хранилище постов
+let posts = [
+	{
+		_id: '1',
+		title: 'Добро пожаловать! 🎉',
+		content: 'Это первый пост из бэкенда',
+		author: { username: 'Система', avatar: '🤖' },
+		likes: 10,
+		comments: 5,
+		timestamp: '1 час назад',
+		liked: false,
+	},
+]
 
-// Serve uploaded files statically
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+// API уязвимый маршруты
+app.get('/api/posts', (req, res) => {
+	console.log('GET /api/posts')
+	res.json(posts)
+})
 
-app.use('/api/auth', authRoutes);
-app.use('/api/posts', postRoutes);
-app.use('/api/posts', commentRoutes); // comment routes mounted under /api/posts/:postId/comments
-app.use('/api/users', userRoutes);
+app.post('/api/posts', (req, res) => {
+	console.log('POST /api/posts', req.body)
+	const { title, content, userId, author } = req.body
 
-const mongoUri = process.env.MONGO_URI || 'mongodb://localhost:27017/minisocial';
-mongoose.connect(mongoUri, { useNewUrlParser: true, useUnifiedTopology: true })
-  .then(() => {
-    console.log('Connected to MongoDB');
-    app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));
-  })
-  .catch(err => console.error('MongoDB connection error', err));
+	const newPost = {
+		_id: Date.now().toString(),
+		title: title, // ⚠️ Может содержать скрипты!
+		content: content, // ⚠️ Может содержать скрипты!
+		author: author || { username: 'Пользователь', avatar: '😊' },
+		likes: 0,
+		comments: 0,
+		timestamp: 'только что',
+		liked: false,
+	}
+	posts.unshift(newPost)
+
+	console.log('⚠️ ВНИМАНИЕ: Пост добавлен БЕЗ санитизации!')
+	console.log('Заголовок:', title)
+	console.log('Контент:', content)
+
+	res.json(newPost)
+})
+
+const PORT = 5000
+app.listen(PORT, () => {
+	console.log(`✅ Backend запущен на http://localhost:${PORT}`)
+})
