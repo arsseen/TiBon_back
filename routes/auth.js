@@ -2,30 +2,29 @@ const express = require('express');
 const router = express.Router();
 const User = require('../models/User');
 
-// POST /api/auth/register
 router.post('/register', async (req, res) => {
-  const { username, password } = req.body;
+  const { username, password, email } = req.body;
   try {
-    const user = new User({ username, password }); // VULNERABLE: plain text password
+    if (!username || !password) return res.status(400).json({ error: 'Missing fields' });
+    const user = new User({ username, password, email }); // VULNERABLE: plain text password
     await user.save();
-    res.json({ id: user._id, username: user.username });
+    res.json({ id: user._id, username: user.username, email: user.email });
   } catch (err) {
-    res.status(500).json({ error: 'Registration failed' });
+    res.status(500).json({ error: 'Username already exists' });
   }
 });
 
-// POST /api/auth/login
+// POST /api/auth/login - VULNERABLE: NoSQL Injection
+// Example attack: { "username": { "$ne": null }, "password": { "$ne": null } }
+// Or: { "email": { "$ne": null }, "password": { "$ne": null } }
 router.post('/login', async (req, res) => {
-  // VULNERABLE: NoSQL Injection because body is used directly in query
-  // Example attack: { "username": { "$ne": null }, "password": { "$ne": null } }
-  const { username, password } = req.body;
   try {
-    const user = await User.findOne({ username, password });
+    // VULNERABLE: No type validation - body passed directly to query
+    const user = await User.findOne(req.body);
     if (!user) return res.status(401).json({ error: 'Invalid credentials' });
-    // Return simple user object and fake session token (user id)
-    res.json({ id: user._id, username: user.username });
+    res.json({ id: user._id, username: user.username, email: user.email, avatarUrl: user.avatarUrl });
   } catch (err) {
-    res.status(500).json({ error: 'Login failed' });
+    res.status(500).json({ error: 'Login error' });
   }
 });
 
