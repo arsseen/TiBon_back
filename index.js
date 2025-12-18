@@ -18,12 +18,10 @@ app.use(
 
 app.use(express.json())
 
-// Создаем папку uploads если её нет
 if (!fs.existsSync('uploads')) {
 	fs.mkdirSync('uploads')
 }
 
-// Делаем папку uploads доступной
 app.use('/uploads', express.static('uploads'))
 
 // ❌ УЯЗВИМАЯ КОНФИГУРАЦИЯ MULTER - Принимает ВСЕ файлы!
@@ -33,23 +31,49 @@ const storage = multer.diskStorage({
 	},
 	filename: (req, file, cb) => {
 		// ❌ УЯЗВИМОСТЬ: Сохраняем с оригинальным расширением
-		// Можно загрузить .php, .exe, .sh файлы!
 		const originalName = file.originalname
 		cb(null, Date.now() + '-' + originalName)
 	},
 })
 
+app.post('/api/login', (req, res) => {
+	const { email, password } = req.body
+	console.log('⚠️ Попытка входа БЕЗ rate limiting')
+
+	// Слабая проверка
+	if (email === 'admin@test.com' && password === 'admin') {
+		res.json({
+			message: 'Успешный вход',
+			user: { id: 1, username: 'Admin', email, avatar: '👑' },
+			token: 'simple-token-123',
+		})
+	} else {
+		res.status(401).json({ error: 'Неверные данные' })
+	}
+})
+
+// ❌ УЯЗВИМОСТЬ: Нет CSRF защиты
+app.post('/api/change-email', (req, res) => {
+	const { userId, newEmail } = req.body
+
+	console.log('⚠️ Email изменен БЕЗ CSRF токена!')
+	console.log('User ID:', userId)
+	console.log('New Email:', newEmail)
+
+	// Имитация изменения
+	res.json({
+		message: 'Email изменен (БЕЗ CSRF защиты!)',
+		newEmail,
+	})
+})
+
 // ❌ УЯЗВИМОСТЬ: Нет проверки типа файла и размера!
 const upload = multer({
 	storage: storage,
-	// НЕТ limits!
-	// НЕТ fileFilter!
 })
 
-// Хранилище загруженных файлов
 let uploadedFiles = []
 
-// Хранилище постов
 let posts = [
 	{
 		_id: '1',
@@ -99,12 +123,10 @@ app.post('/api/upload', upload.single('file'), (req, res) => {
 	}
 })
 
-// Получить список загруженных файлов
 app.get('/api/uploads', (req, res) => {
 	res.json(uploadedFiles)
 })
 
-// Удалить файл (тоже уязвимо - нет проверки авторизации)
 app.delete('/api/uploads/:id', (req, res) => {
 	const { id } = req.params
 	const fileIndex = uploadedFiles.findIndex(f => f.id === id)
@@ -116,7 +138,6 @@ app.delete('/api/uploads/:id', (req, res) => {
 	const file = uploadedFiles[fileIndex]
 	const filePath = path.join(__dirname, 'uploads', file.filename)
 
-	// Удаляем физический файл
 	if (fs.existsSync(filePath)) {
 		fs.unlinkSync(filePath)
 	}
@@ -125,7 +146,6 @@ app.delete('/api/uploads/:id', (req, res) => {
 	res.json({ message: 'Файл удален' })
 })
 
-// API для постов с файлами
 app.post('/api/posts', (req, res) => {
 	const { title, content, userId, author, fileId } = req.body
 
