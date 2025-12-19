@@ -1,32 +1,47 @@
-const express = require('express');
-const mongoose = require('mongoose');
-const cors = require('cors');
-const path = require('path');
-require('dotenv').config();
-
-const authRoutes = require('./routes/auth');
-const postRoutes = require('./routes/posts');
-const userRoutes = require('./routes/users');
-const commentRoutes = require('./routes/comments');
-
+// arsseen/tibon_back/TiBon_back-fd1fdf181f8b0eb97d44bf372bd037a66f6bb76b/index.js
+const express = require("express");
 const app = express();
-const PORT = process.env.PORT || 4000;
+const mongoose = require("mongoose");
+const dotenv = require("dotenv");
+const helmet = require("helmet");
+const morgan = require("morgan");
+const multer = require("multer");
+const path = require("path");
+const cors = require("cors");
+const fs = require("fs"); // Import FS
 
-app.use(cors());
+const userRoute = require("./routes/users");
+const authRoute = require("./routes/auth");
+const postRoute = require("./routes/posts");
+const commentRoute = require("./routes/comments");
+
+dotenv.config();
+
+// Ensure uploads directory exists
+if (!fs.existsSync("uploads")) {
+  fs.mkdirSync("uploads");
+}
+
+mongoose.connect(process.env.MONGO_URL, {
+  useNewUrlParser: true,
+  useUnifiedTopology: true,
+})
+.then(() => console.log("Connected to MongoDB"))
+.catch((err) => console.log(err));
+
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+
+// Middleware
 app.use(express.json());
+app.use(helmet.crossOriginResourcePolicy({ policy: "cross-origin" }));
+app.use(morgan("common"));
+app.use(cors());
 
-// Serve uploaded files statically
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+app.use("/api/auth", authRoute);
+app.use("/api/users", userRoute);
+app.use("/api/posts", postRoute);
+app.use("/api/comments", commentRoute);
 
-app.use('/api/auth', authRoutes);
-app.use('/api/posts', postRoutes);
-app.use('/api/posts', commentRoutes); // comment routes mounted under /api/posts/:postId/comments
-app.use('/api/users', userRoutes);
-
-const mongoUri = process.env.MONGO_URI || 'mongodb://localhost:27017/minisocial';
-mongoose.connect(mongoUri, { useNewUrlParser: true, useUnifiedTopology: true })
-  .then(() => {
-    console.log('Connected to MongoDB');
-    app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));
-  })
-  .catch(err => console.error('MongoDB connection error', err));
+app.listen(8800, () => {
+  console.log("Backend server is running on port 8800!");
+});

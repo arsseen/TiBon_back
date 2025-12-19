@@ -1,30 +1,39 @@
-const express = require('express');
-const router = express.Router();
-const User = require('../models/User');
 
-router.post('/register', async (req, res) => {
-  const { username, password, email } = req.body;
+const router = require("express").Router();
+const User = require("../models/User");
+
+router.post("/register", async (req, res) => {
   try {
-    if (!username || !password) return res.status(400).json({ error: 'Missing fields' });
-    const user = new User({ username, password, email }); // VULNERABLE: plain text password
-    await user.save();
-    res.json({ id: user._id, username: user.username, email: user.email });
+    const newUser = new User({
+      username: req.body.username,
+      email: req.body.email,
+      password: req.body.password, 
+    });
+
+    const user = await newUser.save();
+    res.status(200).json(user);
   } catch (err) {
-    res.status(500).json({ error: 'Username already exists' });
+    res.status(500).json(err);
   }
 });
 
-// POST /api/auth/login - VULNERABLE: NoSQL Injection
-// Example attack: { "username": { "$ne": null }, "password": { "$ne": null } }
-// Or: { "email": { "$ne": null }, "password": { "$ne": null } }
-router.post('/login', async (req, res) => {
+
+router.post("/login", async (req, res) => {
   try {
-    // VULNERABLE: No type validation - body passed directly to query
-    const user = await User.findOne(req.body);
-    if (!user) return res.status(401).json({ error: 'Invalid credentials' });
-    res.json({ id: user._id, username: user.username, email: user.email, avatarUrl: user.avatarUrl });
+
+    const user = await User.findOne({ 
+        username: req.body.username, 
+        password: req.body.password 
+    });
+
+    if (!user) {
+        return res.status(404).json("User not found");
+    }
+
+    const { password, ...other } = user._doc;
+    res.status(200).json(other);
   } catch (err) {
-    res.status(500).json({ error: 'Login error' });
+    res.status(500).json(err);
   }
 });
 

@@ -1,114 +1,92 @@
-const express = require('express');
-const router = express.Router();
-const multer = require('multer');
-const path = require('path');
-const User = require('../models/User');
-const Post = require('../models/Post');
-
+const User = require("../models/User");
+const router = require("express").Router();
+const multer = require("multer");
+const path = require("path");
 const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, path.join(__dirname, '..', 'uploads'));
+  destination: (req, file, cb) => {
+    cb(null, "uploads");
   },
-  filename: function (req, file, cb) {
-    // VULNERABLE: no file type/extension validation
-    cb(null, Date.now() + '-' + file.originalname);
-  }
+  filename: (req, file, cb) => {
+    cb(null, Date.now() + path.extname(file.originalname));
+  },
 });
-const upload = multer({ storage }); // VULNERABLE: no size limit or MIME type check
-
-// GET /api/users/search/:query - search users
-router.get('/search/:query', async (req, res) => {
+const upload = multer({ storage: storage });
+router.put("/:id", upload.single("file"), async (req, res) => {
   try {
-    const users = await User.find({ 
-      username: { $regex: req.params.query, $options: 'i' } 
-    }).select('_id username avatarUrl bio');
-    res.json(users);
-  } catch (err) {
-    res.status(500).json({ error: 'Search failed' });
-  }
-});
-
-// GET /api/users/:id - get user profile
-// VULNERABLE: IDOR - can access any user's private data including email
-router.get('/:id', async (req, res) => {
-  try {
-    const user = await User.findById(req.params.id);
-    if (!user) return res.status(404).json({ error: 'User not found' });
-    
-    const posts = await Post.find({ author: user._id, deletedAt: null })
-      .populate('author', 'username avatarUrl')
-      .sort({ createdAt: -1 });
-    
-    // VULNERABLE: IDOR - Returns email and sensitive data without checking if requester is the user
-    res.json({ 
-      user: {
-        _id: user._id,
-        username: user.username,
-        email: user.email, // VULNERABLE: exposed via IDOR
-        bio: user.bio,
-        avatarUrl: user.avatarUrl,
-        followers: user.followers.length,
-        following: user.following.length
-      },
-      posts 
-    });
-  } catch (err) {
-    res.status(500).json({ error: 'Server error' });
-  }
-});
-
-// PUT /api/users/:id/bio - update bio
-// VULNERABLE: IDOR - no check if requester is the user being updated
-router.put('/:id/bio', async (req, res) => {
-  const { bio } = req.body;
-  try {
-    // VULNERABLE: IDOR - userId not checked, anyone can update any user's bio
-    const user = await User.findByIdAndUpdate(req.params.id, { bio }, { new: true });
-    res.json(user);
-  } catch (err) {
-    res.status(500).json({ error: 'Update failed' });
-  }
-});
-
-// POST /api/users/:id/follow - follow/unfollow user
-// VULNERABLE: IDOR - no userId verification
-router.post('/:id/follow', async (req, res) => {
-  const { userId } = req.body;
-  try {
-    const targetUser = await User.findById(req.params.id);
-    const followerUser = await User.findById(userId);
-    
-    if (!targetUser || !followerUser) return res.status(404).json({ error: 'User not found' });
-    
-    // VULNERABLE: IDOR - no check if request is from actual userId
-    const isFollowing = targetUser.followers.includes(userId);
-    if (isFollowing) {
-      targetUser.followers = targetUser.followers.filter(id => id.toString() !== userId);
-      followerUser.following = followerUser.following.filter(id => id.toString() !== req.params.id);
-    } else {
-      targetUser.followers.push(userId);
-      followerUser.following.push(req.params.id);
+    let updateData = req.body;
+    if (req.file) {
+        updateData.profilePicture = req.file.filename;
     }
+    const user = await User.findByIdAndUpdate(req.params.id, {
+      $set: updateData,
+    }, { new: true });
     
-    await targetUser.save();
-    await followerUser.save();
-    res.json({ followers: targetUser.followers.length });
+    res.status(200).json(user);
   } catch (err) {
-    res.status(500).json({ error: 'Follow failed' });
+    return res.status(500).json(err);
   }
 });
-
-// POST /api/users/:id/avatar - upload avatar
-// VULNERABLE: no file type/extension validation
-router.post('/:id/avatar', upload.single('avatar'), async (req, res) => {
-  if (!req.file) return res.status(400).json({ error: 'No file' });
+router.get("/", async (req, res) => {
+  const userId = req.query.userId;
+  const username = req.query.username;
   try {
-    // VULNERABLE: IDOR - no userId verification
-    const avatarUrl = `/uploads/${req.file.filename}`;
-    await User.findByIdAndUpdate(req.params.id, { avatarUrl });
-    res.json({ avatarUrl });
+    const user = userId
+      ? await User.findById(userId)
+      : await User.findOne({ username: username });
+    if(!user) return res.status(404).json("User not found");
+    const { password, updatedAt, ...other } = user._doc;
+    res.status(200).json(other);
   } catch (err) {
-    res.status(500).json({ error: 'Upload failed' });
+    res.status(500).json(err);
+  }
+});
+router.post("/search", async (req, res) => {
+    try {
+        const query = req.body.query;
+        const users = await User.find({ 
+            username: { $regex: query, $options: "i" } 
+        });
+        res.status(200).json(users);
+    } catch (err) {
+        res.status(500).json(err);
+    }
+});
+router.put("/:id/follow", async (req, res) => {
+  if (req.body.userId !== req.params.id) {
+    try {
+      const user = await User.findById(req.params.id);
+      const currentUser = await User.findById(req.body.userId);
+      if (!user.followers.includes(req.body.userId)) {
+        await user.updateOne({ $push: { followers: req.body.userId } });
+        await currentUser.updateOne({ $push: { following: req.params.id } });
+        res.status(200).json("User has been followed");
+      } else {
+        res.status(403).json("you already follow this user");
+      }
+    } catch (err) {
+      res.status(500).json(err);
+    }
+  } else {
+    res.status(403).json("you cant follow yourself");
+  }
+});
+router.put("/:id/unfollow", async (req, res) => {
+  if (req.body.userId !== req.params.id) {
+    try {
+      const user = await User.findById(req.params.id);
+      const currentUser = await User.findById(req.body.userId);
+      if (user.followers.includes(req.body.userId)) {
+        await user.updateOne({ $pull: { followers: req.body.userId } });
+        await currentUser.updateOne({ $pull: { following: req.params.id } });
+        res.status(200).json("User has been unfollowed");
+      } else {
+        res.status(403).json("you dont follow this user");
+      }
+    } catch (err) {
+      res.status(500).json(err);
+    }
+  } else {
+    res.status(403).json("you cant unfollow yourself");
   }
 });
 
