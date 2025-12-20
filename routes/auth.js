@@ -20,7 +20,12 @@ router.post("/register", async (req, res) => {
 
 router.post("/login", async (req, res) => {
   try {
+    //nosql injection 
 
+    if (typeof req.body.username !== 'string' || typeof req.body.password !== 'string') {
+        console.log("!!! SECURITY ALERT: NoSQL Injection attempt detected !!!");
+        return res.status(400).json("Invalid data format");
+    }
     const user = await User.findOne({ 
         username: req.body.username, 
         password: req.body.password 
